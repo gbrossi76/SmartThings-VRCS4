@@ -1,8 +1,0 @@
-zwaveManufacturer:
-  - id: "Leviton ZRCS4"
-    deviceLabel: Leviton 4 Button Switch
-    manufacturerId: 0x001D
-    productType: 0x0802
-    productId: 0x0261 
-    deviceProfileName: Leviton-zrcs4-pr
-
