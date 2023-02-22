@@ -1,0 +1,4 @@
+name: 'Z-Wave Leviton 4-Button Scene Controller'
+packageKey: 'zwave-leviton-VRCS4'
+permissions:
+  zwave: {}
