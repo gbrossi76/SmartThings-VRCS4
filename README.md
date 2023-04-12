@@ -42,7 +42,7 @@ The basic features of the VRCS4 as implemented in this driver.
 ## Code
 
 github.com: 
-https://github.com/harobinson/VRCS4-M0Z
+https://github.com/harobinson/SmartThings-VRCS4
 
 ## Settings
 
