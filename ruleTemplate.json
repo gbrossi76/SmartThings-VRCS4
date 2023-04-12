@@ -1,0 +1,246 @@
+{
+    "name":"Rule Template",
+    "actions":[
+       {
+          "if":{
+             "changes":{
+                "equals":{
+                   "left":{
+                      "device":{
+                         "devices":[
+                            "<VRCS4 Switch>"
+                         ],
+                         "component":"<main, switch2, switch3, or switch4>",
+                         "capability":"switch",
+                         "attribute":"switch"
+                      }
+                   },
+                   "right":{
+                      "string":"on"
+                   }
+                }
+             },
+             "then":[
+                {
+                   "command":{
+                      "devices":[
+                         "<Target Switch>"
+                      ],
+                      "commands":[
+                         {
+                            "component":"main",
+                            "capability":"switch",
+                            "command":"on"
+                         }
+                      ]
+                   }
+                }
+             ],
+             "else":[
+                {
+                   "if":{
+                      "changes":{
+                         "equals":{
+                            "left":{
+                               "device":{
+                                  "devices":[
+                                     "<VRCS4 Switch>"
+                                  ],
+                                  "component":"<main, switch2, switch3, or switch4>",
+                                  "capability":"switch",
+                                  "attribute":"switch"
+                               }
+                            },
+                            "right":{
+                               "string":"off"
+                            }
+                         }
+                      },
+                      "then":[
+                         {
+                            "command":{
+                               "devices":[
+                                  "<Target Switch>"
+                               ],
+                               "commands":[
+                                  {
+                                     "component":"main",
+                                     "capability":"switch",
+                                     "command":"off"
+                                  }
+                               ]
+                            }
+                         }
+                      ]
+                   }
+                }
+             ]
+          }
+       },
+         {
+            "if": {
+                "changes": {
+                    "operand": {
+                        "device": {
+                            "devices": [
+                                "<VRCS4 Switch>"
+                            ],
+                            "component": "<main, switch2, switch3, or switch4>",
+                            "capability": "switchLevel",
+                            "attribute": "level"
+                        }
+                    }
+                },
+                "then": [
+                    {
+                        "command": {
+                            "devices": [
+                                "<Target Switch>"
+                            ],
+                            "commands": [
+                                {
+                                    "component": "main",
+                                    "capability": "switchLevel",
+                                    "command": "setLevel",
+                                    "arguments": [
+                                        {
+                                            "device": {
+                                                "devices": [
+                                                    "<VRCS4 Switch>"
+                                                ],
+                                                "component": "<main, switch2, switch3, or switch4>",
+                                                "capability": "switchLevel",
+                                                "attribute": "level"
+                                            }
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+      {
+          "if":{
+             "changes":{
+                "equals":{
+                   "left":{
+                      "device":{
+                         "devices":[
+                            "<Target Switch>"
+                         ],
+                         "component":"main",
+                         "capability":"switch",
+                         "attribute":"switch"
+                      }
+                   },
+                   "right":{
+                      "string":"on"
+                   }
+                }
+             },
+             "then":[
+                {
+                   "command":{
+                      "devices":[
+                         "<VRCS4 Switch>"
+                      ],
+                      "commands":[
+                         {
+                            "component":"<main, switch2, switch3, or switch4>",
+                            "capability":"switch",
+                            "command":"on"
+                         }
+                      ]
+                   }
+                }
+             ],
+             "else":[
+                {
+                   "if":{
+                      "changes":{
+                         "equals":{
+                            "left":{
+                               "device":{
+                                  "devices":[
+                                     "<Target Switch>"
+                                  ],
+                                  "component":"main",
+                                  "capability":"switch",
+                                  "attribute":"switch"
+                               }
+                            },
+                            "right":{
+                               "string":"off"
+                            }
+                         }
+                      },
+                      "then":[
+                         {
+                            "command":{
+                               "devices":[
+                                  "<VRCS4 Switch>"
+                               ],
+                               "commands":[
+                                  {
+                                     "component":"<main, switch2, switch3, or switch4>",
+                                     "capability":"switch",
+                                     "command":"off"
+                                  }
+                               ]
+                            }
+                         }
+                      ]
+                   }
+                }
+             ]
+          }
+       },
+         {
+            "if": {
+                "changes": {
+                    "operand": {
+                        "device": {
+                            "devices": [
+                                "<Target Switch>"
+                            ],
+                            "component": "main",
+                            "capability": "switchLevel",
+                            "attribute": "level"
+                        }
+                    }
+                },
+                "then": [
+                    {
+                        "command": {
+                            "devices": [
+                                "<VRCS4 Switch>"
+                            ],
+                            "commands": [
+                                {
+                                    "component": "<main, switch2, switch3, or switch4>",
+                                    "capability": "switchLevel",
+                                    "command": "setLevel",
+                                    "arguments": [
+                                        {
+                                            "device": {
+                                                "devices": [
+                                                    "<Target Switch>"
+                                                ],
+                                                "component": "main",
+                                                "capability": "switchLevel",
+                                                "attribute": "level"
+                                            }
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        }
+
+    ]
+}
