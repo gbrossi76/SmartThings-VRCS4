@@ -63,7 +63,7 @@ As the switches simply control their internal state, it is natural to associate 
 * If the target switch changes to Off, then set VRCS4 button to Off.
 * If the target switch dimming level changes, then change dimming level of the VRCS4.
 
-To use this rules:
+To use the rules:
 * Import the file "ruleTemplate.json"
 * Substitute all occurrences of <VRCS4 Switch> to the VRCS4 device id.  “Make sure to remove the angle brackets.”
 * Select “main, switch2, switch3, or switch4” in the component field currently marked <main, switch2, switch3, or switch4>, remove the angle brackets
