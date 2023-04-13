@@ -1,8 +1,8 @@
--- LEVITON VRCS4-M0Z EDGE DRIVER FOR SMARTTHINGS
+-- LEVITON VRCS4-M0Z/VRCS4-MRZ EDGE DRIVER FOR SMARTTHINGS
 -- 
 -- Copyright 2023, Henry Robinson
--- Based on contributions by Brian Dahlem, Copyright 2014
 -- Acknowledgements:
+--  Based on contributions by Brian Dahlem's Groovy Driver, Copyright 2014
 --  Jeff Brown (j9brown) for decoding Leviton LED commands
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,7 +16,25 @@
 -- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
-
+--
+-- Implementation notes:
+--   This driver turns the VRCS4 Controller into a 4 multi-level switches ... note that state is SOLELY maintained in the SmartThings driver (switch state is not queried)
+--   While the original Leviton design allows the user to select from 4 scenes, this driver handles each button independently
+--   Functions used:
+--       a) Scene Activation signals that a button has been pressed
+--       b) Manufacturer-specific commands control the LED settings (turns scenes on/off)
+--       c) Level Up/Down is used to handle dimming functions
+--
+--   After some debugging, Z-WAVE associations were not used to control individual switches.  The Smartthings Hub was used to collect/disseminate dimming actions
+--
+--   Other key features:
+--       -- SYNC setting allows two or more VRCS4's to be synchronized
+--       -- Dimming duration (seconds to go from 100% to 0) is selectable using a settings option
+--
+-- Device settings tracked:
+--   lastScene:           button # for last scene that was activated, used to handle debounce logic
+--   lastTime:            OS time when the last button was pressed.  Prevents any action within 2 seconds of button activation
+--   switchConfigured:    flag to avoid continuous configuration of associations (if true, then device was configured)
 
 local capabilities = require "st.capabilities"
 local ZwaveDriver = require "st.zwave.driver"
@@ -24,7 +42,7 @@ local utils = require "st.utils"
 local defaults = require "st.zwave.defaults"
 local log = require "log"
 
---- handle functions to throttle commands
+--- handle functions to throttle commands to controller (one per second)
 local throttle_send = require "throttle_send"
 
 --- @type st.zwave.CommandClass
@@ -39,6 +57,7 @@ local SwitchMultilevel= (require "st.zwave.CommandClass.SwitchMultilevel")({ ver
 local Configuraiton = (require "st.zwave.CommandClass.Configuration") ({version = 1})
 local ManufacturerProprietary = (require "st.zwave.CommandClass.ManufacturerProprietary")({ version = 1})
 local ManufacturerSpecific = (require "st.zwave.CommandClass.ManufacturerSpecific")({ version = 1})
+local Version = (require "st.zwave.CommandClass.Version")({ version = 2})
 local zw = require "st.zwave"
 
 local switchNames = {"main", "switch2", "switch3", "switch4"}
@@ -67,8 +86,9 @@ local function queue_command (device, cmd)
 end
 
 -- determine which devices should receive commands based in Sync Option
-local function build_device_list (driver, device)
-  local deviceList = {device}
+local function build_device_list (driver, device, includeDevice)
+  local deviceList = {}
+  if (includeDevice) then deviceList = {device} end
   if (not device.preferences.sync) then
     return deviceList 
     end
@@ -86,6 +106,18 @@ end
 -- 2) The bitmap is the last byte of the command (green is the last 4 bits)
 -- 3) If we have sync enabled and multiple devices, update the LEDs for each device
 -- 4) Setting the LED will enable/disable scene for each switch (controlled by lit LED)
+-- Indicator Lights -->
+-- Use these messages to override the indicator lights.
+--   91 00 1D 0D 01 00 00 : Reset LEDs to locally controlled operation (default behavior).
+--   91 00 1D 0D 01 FF xx : Set LEDs by OR-ing together the following bit patterns.
+--       00000000: button 1 off
+--       00000001: button 1 green
+--       00000000: button 2 off
+--       00000010: button 2 green
+--       00000000: button 3 off
+--       00000100: button 3 green
+--       00000000: button 4 off
+--       00001000: button 4 green
 
 local function update_LEDs (driver, device) 
   local bitmap = 0
@@ -96,7 +128,7 @@ local function update_LEDs (driver, device)
   end
 -- LEDs get set, but get an unsupported command response from device
   local cmdString = string.format("\x1D\x0D\x01\xFF%c", bitmap)
-  local devices = build_device_list (driver, device)
+  local devices = build_device_list (driver, device, true)
   for index = 1,#devices do
     devices[index]:send(zw.Command(0x91, 0x00, cmdString))
   end
@@ -126,10 +158,6 @@ local function association_groupings_report_handler(self, device, cmd)
   end
 
 
-local function scene_controller_handler(self, device, cmd)
-  log.debug("------ Unexpected received Scene Controller Conf report")
-end
-
 local function scene_actuator_conf_get_handler(self, device, cmd)
   log.debug("------ Unexpected received Scene_Actuator_Conf_Get")
 end
@@ -142,19 +170,25 @@ local function configuration_report_handler(self, device, cmd)
   log.debug("------ Unexpected received Configuration_Report")
 end
 
-local function switch_multilevel_handler(self, device, cmd)
-  log.debug("------ Dimming was pressed.")
-end
-
 local function proprietary_handler(self, device, cmd)
   log.debug("------ Received mfg proprietary")
 end
 
 local function confReport_handler(self, device, cmd)
   log.debug("------ Unexpected Received conf report")
-
 end
 
+local function scene_controller_handler(self, device, cmd)
+  log.debug("------ Unexpected Controller Configuration Report")
+end
+
+
+-- Z-WAVE Commands handled
+-- 1) Scene Activation: Button was pressed to turn on/off
+-- 2) Multi-level start: Dimming button was pressed.  Change switchLevel (up or down) at dimming interval
+-- 3) Multi-level stop: Dimming button was released.  Stop dimming loop
+
+-- ZWAVE COMMAND: Scene Activation
 -- button (switch) was pressed 
 -- Normalize to button 1-4, translate scenes 5-8 to button 1-4
 -- If LED is off, then you get scenes 1-4
@@ -163,16 +197,14 @@ end
 -- Updating the bitmap will sync LED and SmartThings state to keep them in sync
 
 local function scene_activation_handler(self, device, cmd)
-  log.debug("------ Received Scene_Activation")
-    local devices = build_device_list (self, device)
-    log.debug ("Number of linked devices: ", #devices)
-
+  log.trace("------ Received Scene_Activation")
+  local devices = build_device_list (self, device, true)
   local button = cmd.args.scene_id
   button = (button > 4) and (button - 4) or button
 -- Allow for debounce, may get multiple messages for same press
 -- Ignore if same scene within 2 seconds
   if ((button == device:get_field("lastScene")) and (os.difftime(os.time(), device:get_field("lastTime"))<2)) then
-    log.debug("Repeated press")
+    log.trace("Repeated press, no action taken")
   else
   -- Update history to new setting
     device:set_field("lastScene", button)
@@ -188,80 +220,163 @@ local function scene_activation_handler(self, device, cmd)
   end
 end
 
--- Switch was selected using the SmartThings app
--- 1) Build the list of devices that should be updated based on Sync option
--- 2) emit the event to turn on the switch
--- 3) update LED's
+-- Dimming logic:
+--  Switch sends a Multilevel_Start
+--    Set up timer (1 second)
+--    Increase/decrease level by 100/dimming level, i.e. number of levels to change per second.
+--    Ignore if level is already at minimum (stepping down) or maximum (stepping up)
+--  Switch sends a Multilevel_Stop
+--    Cancel the dimming timer
 
-local function handle_on(driver, device, command)
-  local devices = build_device_list (driver, device)
-  for index = 1,#devices do
-    devices[index]:emit_component_event(device.profile.components[command.component], capabilities.switch.switch.on())
+local dimming = {}
+local function switch_multilevel_start_handler(self, device, cmd)
+  local devices = build_device_list (self, device, true)
+  local button = device:get_field("lastScene")
+  local dimStep = math.ceil (100/device.preferences.dimming)
+  local step = (cmd.args.up_down) and -dimStep or dimStep
+  log.trace ("Starting dimming of button ", button, " with dimming interval:", step)
+  local function dimming_loop()
+    if (not dimming[device.id]) then
+      dimming[device.id] = device.thread:call_on_schedule (1, dimming_loop)
+      end
+    local switchLevel = device:get_latest_state (switchNames[button], "switchLevel", "level")
+    switchLevel = math.max(math.min(100, switchLevel+step), 0)
+      for index = 1,#devices do
+        devices[index]:emit_component_event(device.profile.components[switchNames[button]], capabilities.switchLevel.level(switchLevel))
+        end
     end
-  update_LEDs (driver, device)
+--  local button = device:get_field("lastScene")
+-- only invoke dimming loop if a) no timer action; or b) the "last button" pressed is not known
+  if not (dimming[device.id] and button) then dimming_loop() end
 end
 
-
-local function handle_off(driver, device, command)
-  local devices = build_device_list (driver, device)
-  for index = 1,#devices do
-    devices[index]:emit_component_event(device.profile.components[command.component], capabilities.switch.switch.off())
+local function switch_multilevel_stop_handler (self, device, cmd)
+  log.trace ("Stopping dimming.")
+  if (dimming[device.id]) then
+    device.thread:cancel_timer(dimming[device.id])
+    dimming[device.id] = nil
     end
-  update_LEDs (driver, device)
+  end
+
+-- UI or APP Commands
+-- ON: Set switch state to ON
+-- OFF: Set switch state to OFF
+-- LEVEL: Change switchLevel
+--
+-- For each command, determine which switches should get updated
+-- Updates are to the SmartThings state only
+--
+
+local function capability_handle_on(driver, device, command)
+  log.trace ("UI/APP sent an on command for switch ", device.label, command.component)
+  local oldState = device:get_latest_state (command.component, "switch", "switch")
+  -- ignore if state is already on
+  if (oldState ~= "on") then
+    log.trace ("Turning switch on")
+    local devices = build_device_list (driver, device, true)
+    for index = 1,#devices do
+      devices[index]:emit_component_event(device.profile.components[command.component], capabilities.switch.switch.on())
+      end
+    update_LEDs (driver, device)
+  else
+    log.trace ("Switch was already on.  Command skipped.")
+    end
 end
 
--- primarily used to associate the hub so that messages can be collected
--- If user selects to associate a switch with the scene for dimming, then add that device
+local function capability_handle_off(driver, device, command)
+  log.debug ("UI/APP sent an off command for switch ", device.label, command.component)
+  local oldState = device:get_latest_state (command.component, "switch", "switch")
+  -- ignore if state is already off
+  if (oldState ~= "off") then
+    log.debug ("Turning switch off")
+    local devices = build_device_list (driver, device, true)
+    for index = 1,#devices do
+      devices[index]:emit_component_event(device.profile.components[command.component], capabilities.switch.switch.off())
+      end
+    update_LEDs (driver, device)
+  else
+    log.trace ("Switch was already off.  Command skipped.")
+    end
+end
+
+local function capability_switch_level_set (driver, device, command)
+  log.debug ("UI/APP changed level to: ", command.args.level, "for switch ", device.lable, command.component)
+  local switchLevel = device:get_latest_state (command.component, "switchLevel", "level")
+  local devices = build_device_list (driver, device, true)
+  for index = 1,#devices do
+    devices[index]:emit_component_event(device.profile.components[command.component], capabilities.switchLevel.level(command.args.level))
+    end
+end
+
+local function version_handler (driver, device, cmd)
+  log.debug("Received version report")
+end
+-- Associate the hub so that messages can be collected
 
 local function set_associations (self, device)
-  log.debug ("Updating associations")
-  local hub = device.driver.environment_info.hub_zwave_id or 1
-  log.debug ("Hub address: ", hub)
-  for button = 1,4 do
-    local node = device.preferences[switchNames[button]]
-    log.debug ("Current setting for button ", button, "is: ", node)
-    if (node ~= device:get_field ("switchAssoc"..button)) then
-      log.debug ("Updating switch info for ", button, " value is :", node, "old value is: ", device:get_field("switchAssoc"..button))
+  if (device:get_field("switchConfigured") == nil) then
+    log.trace ("Updating associations for switch.")
+    local hub = device.driver.environment_info.hub_zwave_id or 1
+    for button = 1,4 do
       queue_command (device, Association:Remove({grouping_identifier = button, node_ids = {}}))
       queue_command (device, Association:Remove({grouping_identifier = button+4, node_ids = {}}))
-
-      queue_command (device, Association:Set({grouping_identifier = button, node_ids = {hub, node}}))
-      queue_command (device, Association:Set({grouping_identifier = button+4, node_ids = {hub, node}})) 
+      queue_command (device, Association:Set({grouping_identifier = button, node_ids = {hub}}))
+      queue_command (device, Association:Set({grouping_identifier = button+4, node_ids = {hub}})) 
       queue_command (device, SceneControllerConf:Set({group_id = button, scene_id = button; dimming_duration = "default"}))
       queue_command (device, SceneControllerConf:Set({group_id = button+4, scene_id = button+4; dimming_duration = "default"}))
---     queue_command (device, SceneControllerConf:Get({group_id = button}))
---     queue_command (device, SceneControllerConf:Get({group_id = button+4}))
-      device:set_field ("switchAssoc"..button, node, {persist = true})
-      end
+    end
+    device:set_field("switchConfigured", true)
   end
 end
-  
 
-local function device_added (self, device)
-  log.debug ("*** device was added")
+local function sync_switches (self, device)
+  local devices = build_device_list (self, device, false)
+  if (#devices ~= 0) then
+    log.trace ("Syncing switch with ", devices[1].label, ", id:", devices[1].id)
+    for button = 1, 4 do
+      local switchState = devices[1]:get_latest_state (switchNames[button], "switch", "switch")
+      local action = ((switchState == "on") and capabilities.switch.switch.on) or capabilities.switch.switch.off
+      device:emit_component_event(device.profile.components[switchNames[button]], action())
+      device:emit_component_event(device.profile.components[switchNames[button]], capabilities.switchLevel.level(devices[1]:get_latest_state (switchNames[button], "switchLevel", "level")))
+    end
+  else
+    for button = 1, 4 do
+      log.trace ("Initializing switch to base value (off and level 100.")
+      device:emit_component_event(device.profile.components[switchNames[button]], capabilities.switch.switch.off())
+      device:emit_component_event(device.profile.components[switchNames[button]], capabilities.switchLevel.level(100))
+    end
+  end
 end
 
-local function device_info_changed (self, device)
-  log.debug("+++ device info was changed")
+
+local function device_added (driver, device)
+  log.trace ("*** New device was added, device: ", device.label, ", id:", device.id)
+  sync_switches(driver, device)
+end
+
+local function device_info_changed (driver, device, event, args)
+  log.trace("*** Device info was changed for device:", device.label, ", id:", device.id)
+  queue_command (device, Version:Get ({}))
 -- check if Settings were changed.
-  set_associations (self, device)
+  if (args.old_st_store.preferences.sync ~= device.preferences.sync) then
+    if (device.preferences.sync) then
+      sync_switches (driver, device)
+    end
+  end
   end
 
-local do_configure = function(self, device)
-
-  device:refresh()
+local init_driver_handler = function(self, device)
+  log.trace ("Driver was init'd for device:", device.id)
   queue_command (device, ManufacturerSpecific:Get ({}))
+  set_associations (self, device)
 
   for button = 1, 4 do
     device:emit_component_event(device.profile.components[switchNames[button]], capabilities.switch.switch.off())
-    device:set_field ("switchAssoc"..button, nil, {persist = true})
+    device:emit_component_event(device.profile.components[switchNames[button]], capabilities.switchLevel.level(100))
   end
   update_LEDs (self, device)
- -- device:emit_component_event(device.profile.components["main"], capabilities.switch.switch.off())
   device:set_field("lastScene", nil)
   device:set_field("lastTime", os.time())
-  log.debug ("*** Fully configured device ****")
-
 end
 
 local driver_template = {
@@ -292,8 +407,8 @@ local driver_template = {
     },
     [cc.SWITCH_MULTILEVEL] = {
  
-      [0x04] = switch_multilevel_handler,
-      [0x05] = switch_multilevel_handler
+      [SwitchMultilevel.START_LEVEL_CHANGE] = switch_multilevel_start_handler,
+      [SwitchMultilevel.STOP_LEVEL_CHANGE] = switch_multilevel_stop_handler
       },
   [cc.MANUFACTURER_PROPRIETARY] = {
     [0x00] = proprietary_handler
@@ -303,20 +418,27 @@ local driver_template = {
       [0x04] = proprietary_handler,
  --     -- REPORT
       [0x05] = proprietary_handler
-      }
+    },
+  [cc.VERSION] = {
+    [Version.REPORT] = version_handler
+    }
   },
     supported_capabilities = {
-    capabilities.switch
-  },
-  --]]
+    capabilities.switch,
+    capabilities.switchLevel,
+    capabilities.refresh
+    },
     capability_handlers = {
     [capabilities.switch.ID] = {
-      [capabilities.switch.commands.on.NAME] = handle_on,
-      [capabilities.switch.commands.off.NAME] = handle_off,
+      [capabilities.switch.commands.on.NAME] = capability_handle_on,
+      [capabilities.switch.commands.off.NAME] = capability_handle_off,
+      },
+    [capabilities.switchLevel.ID] = {
+      [capabilities.switchLevel.commands.setLevel.NAME] = capability_switch_level_set
       }
     },
     lifecycle_handlers = {
-    init = do_configure,
+    init = init_driver_handler,
     added = device_added,
     infoChanged = device_info_changed
 
