@@ -4,4 +4,4 @@ zwaveManufacturer:
     manufacturerId: 0x001D
     productType: 0x0802
     productId: 0x0261
-    deviceProfileName: zwave-leviton-vrcs4
+    deviceProfileName: leviton-vrcs4
