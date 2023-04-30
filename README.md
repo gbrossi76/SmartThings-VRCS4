@@ -1,8 +1,11 @@
 # SmartThings Edge Driver for Leviton VRCS4-M0Z
 
 Edge Driver implements the Leviton VRCS4 device as a group of 4 on/off switches controlled by corresponding buttons on the VRCS4 device. Using SmartThings allows you to configure routines to integrate each switch to control other SmartThings devices.
+
 This driver supports the Leviton VRCS4-M0Z model of the switch consisting of 4 buttons (with LEDs) and a dimmer toggle.  
+
 M0Z consists of 4 switches and a dimmer toggle.  The device does not contain an embedded load.
+
 The basic features of the VRCS4 as implemented in this driver.
 * The device exposes four independent On/Off dimming switches which can be controlled either from the device or via the SmartThings UI
 * LEDs are automatically controlled based on the state of the switch (LED is on when the switch is on)
@@ -52,12 +55,12 @@ Basic operation is as follows:
 * The dimming button issues SmartThings switchLevel events 
 
 If Sync is configured on multiple Leviton switches, both the SmartThings switch state, dimming levels, and LEDs are mirrored across all sync’ed devices.
+
 The SmartThings UI displays 4 switches (Switch 1, Switch 2, Switch 3, and Switch 4) that can be controlled either from the SmartThings UI (LEDs are sync’ed) or on the physical device. You can connect them to a SmartThings device using automations (see limitations above) or rules.  Rules see the switches as main, switch2, switch3, and switch4.
-You may see some LED flashes during operation but I observed that latency is acceptable.
 
 
 ## Acknowledgments
 
-* (@harobison) for the original EDGE driver code.
+* Henry Robison (@harobison) for the original Edge driver code.
 * Brian Dalhem (@bdahlem) for the original DTH groovy code.
 * Jason Brown (@j9brown) for documenting Leviton proprietary command for LED control.
