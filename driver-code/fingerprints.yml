@@ -1,7 +1,7 @@
 zwaveManufacturer:
   - id: "Leviton/VRCS4-MRZ"
-    deviceLabel: Leviton VRCS4-MRZ 4-Scene Controller
+    deviceLabel: Z-Wave Leviton VRCS4-MRZ 4-Scene Controller
     manufacturerId: 0x001D
     productType: 0x0802
     productId: 0x0261
-    deviceProfileName: leviton-vrcs4
+    deviceProfileName: zwave-leviton-vrcs4
