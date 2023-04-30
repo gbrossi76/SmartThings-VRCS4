@@ -1,4 +1,4 @@
--- LEVITON VRCS4-M0Z/VRCS4-MRZ EDGE DRIVER FOR SMARTTHINGS
+-- LEVITON VRCS4-M0Z EDGE DRIVER FOR SMARTTHINGS
 -- 
 -- Copyright 2023, Henry Robinson
 -- Acknowledgements:
@@ -453,5 +453,5 @@ local driver_template = {
 ]]--
 
 defaults.register_for_default_handlers(driver_template, driver_template.supported_capabilities)
-local buttonSwitch = ZwaveDriver("Z-Wave Leviton 4-Button Scene Controller", driver_template)
+local buttonSwitch = ZwaveDriver("Z-Wave Leviton VRCS4-MRZ 4-Scene Controller", driver_template)
 buttonSwitch:run()
