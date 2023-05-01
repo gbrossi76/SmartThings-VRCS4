@@ -1,4 +1,4 @@
 name: 'Z-Wave Leviton VRCS4-MRZ 4-Scene Controller'
-packageKey: 'zwave-leviton-VRCS4'
+packageKey: 'zwave-leviton-vrcs4'
 permissions:
   zwave: {}
